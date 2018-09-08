@@ -1,5 +1,5 @@
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
 #include <omp.h>
 #include <mpi.h>
 
@@ -19,7 +19,7 @@ int inset(double real, double img, int maxiter){
     //If not, keep checking
 	double z_real = real;
 	double z_img = img;
-	#pragma omp parallel for schedule(dynamic)
+	int iters;
 	for(int iters = 0; iters < maxiter; iters++){
 		double z2_real = z_real*z_real-z_img*z_img;
 		double z2_img = 2.0*z_real*z_img;
@@ -35,9 +35,10 @@ int mandelbrotSetCount(double real_lower, double real_upper, double img_lower, d
 	int count=0;
 	double real_step = (real_upper-real_lower)/num;
 	double img_step = (img_upper-img_lower)/num;
+	int real,img;
 	#pragma omp parallel for schedule(dynamic)
-	for(int real=0; real<num; real++){
-		for(int img=0; img<num; img++){
+	for(real=rank; real<num; real+=size){
+		for(img=0; img<num; img++){
 			count+=inset(real_lower+real*real_step,img_lower+img*img_step,maxiter);
 		}
 	}
@@ -55,12 +56,13 @@ int main(int argc, char *argv[]){
 	int num_regions = (argc-1)/6;
 
     //Initialize communicator
-	MPI_Init(&argc, &argv);
-	MPI_Comm_rank(MPI_COMM_WORLD, &size);
+	MPI_Init( int &argc, char &argv );
+	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     double start = MPI_Wtime();
-	for(int region=rank;region<num_regions;region+=size){
+
+	for(int region=0;region<num_regions;region++){
 		// scan the arguments
 		sscanf(argv[region*6+1],"%lf",&real_lower);
 		sscanf(argv[region*6+2],"%lf",&real_upper);
@@ -68,12 +70,19 @@ int main(int argc, char *argv[]){
 		sscanf(argv[region*6+4],"%lf",&img_upper);
 		sscanf(argv[region*6+5],"%i",&num);
 		sscanf(argv[region*6+6],"%i",&maxiter);
-		printf("%d\n",mandelbrotSetCount(real_lower,real_upper,img_lower,img_upper,num,maxiter));
+		int mandelbrotCount = mandelbrotSetCount(real_lower,real_upper,img_lower,img_upper,num,maxiter);
+        int madelbrotCountSum = 0;
+
+		MPI_Reduce(&mandelbrotCount, &madelbrotCountSum, 1, MPI_INT, MPI_SUM,0,MPI_COMM_WORLD);
+
+        if(rank==0){
+            printf("%d",madelbrotCountSum);
+        }
 	}
 
 	double end = MPI_Wtime();
 	if(rank==0){
-        printf("Run time: %f\n", (end-start));
+        printf("time: %f", end-start);
 	}
 
 	MPI_Finalize();
