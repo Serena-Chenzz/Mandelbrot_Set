@@ -8,7 +8,7 @@ int size, rank;
 
 // return 1 if in set, 0 otherwise
 int inset(double real, double img, int maxiter){
-    //Add a cardioid check
+    //Add a cardioid and bulb check
     double img2 = img*img;
     double check1 = (real-0.25)*(real-0.25) + img2;
     double check2 = 4*check1*(real-0.25+check1);
@@ -36,7 +36,7 @@ int mandelbrotSetCount(double real_lower, double real_upper, double img_lower, d
 	double real_step = (real_upper-real_lower)/num;
 	double img_step = (img_upper-img_lower)/num;
 	int real,img;
-	#pragma omp parallel for schedule(dynamic)
+	#pragma omp parallel for schedule(dynamic) reduction(+:count)
 	for(real=rank; real<num; real+=size){
 		for(img=0; img<num; img++){
 			count+=inset(real_lower+real*real_step,img_lower+img*img_step,maxiter);
@@ -56,11 +56,9 @@ int main(int argc, char *argv[]){
 	int num_regions = (argc-1)/6;
 
     //Initialize communicator
-	MPI_Init( int &argc, char &argv );
+	MPI_Init( &argc, &argv );
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-    double start = MPI_Wtime();
 
 	for(int region=0;region<num_regions;region++){
 		// scan the arguments
@@ -76,13 +74,8 @@ int main(int argc, char *argv[]){
 		MPI_Reduce(&mandelbrotCount, &madelbrotCountSum, 1, MPI_INT, MPI_SUM,0,MPI_COMM_WORLD);
 
         if(rank==0){
-            printf("%d",madelbrotCountSum);
+            printf("%d\n",madelbrotCountSum);
         }
-	}
-
-	double end = MPI_Wtime();
-	if(rank==0){
-        printf("time: %f", end-start);
 	}
 
 	MPI_Finalize();
